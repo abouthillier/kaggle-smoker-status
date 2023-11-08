@@ -36,93 +36,37 @@ pd.options.display.max_columns = None
 train = pd.read_csv('./data/train.csv')
 test = pd.read_csv('./data/test.csv')
 
-# Define a function to extract the numeric part from the first item
-def extract_and_convert(value):
-    if isinstance(value, str):
-        parts = value.split(' ')  # Split the value by spaces
-        numeric_part = ''.join(filter(str.isdigit, parts[0]))
-        return int(numeric_part) if numeric_part else 0
-    return 0
-
-def count_cabins(cell):
-    if pd.notna(cell):
-        return len(cell.split())
-    else:
-        return 1
-
-def cabin_convert(cell, cabin_dict):
-    if pd.notna(cell):
-        parts = cell.split(' ')
-        alpha = ''.join(filter(str.isalpha, parts[0]))
-        if alpha in cabin_dict:
-            return cabin_dict[alpha]
-        else:
-            return 0
-    else: 
-        return 0
-
 def data_clean(raw_data):
 
+    data = []
     min_max_scaler = preprocessing.MinMaxScaler()
-    scaler = preprocessing.StandardScaler()
 
-    features = ['Pclass', 'Sex', 'Age', 'SibSp', 'Parch', 'Fare_per_room', 'Embarked']
+    features_to_scale = ['age', 'height(cm)', 'weight(kg)', 'waist(cm)']
+    data = raw_data[features_to_scale]
+    data = pd.DataFrame(min_max_scaler.fit_transform(data), columns=(features_to_scale))
 
-    # Fill missing Age data with the median
-    raw_data['Age'] = raw_data['Age'].fillna(raw_data['Age'].median())
-    raw_data['Age'] = min_max_scaler.fit_transform(raw_data[['Age']])
+    # Find variance in eyesight
+    data['eyesight_var'] = abs(raw_data['eyesight(left)'] - raw_data['eyesight(right)'])
 
-    # Fill missing Fare data with $0
-    raw_data['Fare'] = raw_data['Fare'].fillna(0)
-    
-    # Calculate per-room fare
-    raw_data['Fare_per_room'] = np.trunc((raw_data['Fare'] / raw_data['Cabin'].apply(count_cabins)))
-    raw_data['Fare_per_room'] = min_max_scaler.fit_transform(raw_data[['Fare_per_room']])
+    # Find variance in hearing
+    data['hearing_var'] = abs(raw_data['hearing(left)'] - raw_data['hearing(right)'])
 
-    # Convert Cabin values to categorized columns
-    cabins = 'ABCDEFG'
 
-    for letter in cabins:
-        cabin_label = f'Cabin_{letter}'
-        raw_data[cabin_label] = np.where(raw_data['Cabin'].astype(str).str.contains(letter), raw_data['Cabin'], 0)
-        raw_data[cabin_label] = raw_data[cabin_label].apply(extract_and_convert)
-
-    if 'Survived' in raw_data.columns:
-        surv = raw_data[raw_data['Survived'] == 1]
-        cabin_percent = []
-        for letter in cabins:
-            cabin_label = f'Cabin_{letter}'
-            # Calculate the percent of survivors in each cabin deck
-            percent = np.count_nonzero(surv[cabin_label]) / np.count_nonzero(raw_data[cabin_label])  
-            cabin_percent.append("%.2f" % percent)
-    else:
-        cabin_percent = [0.47, 0.74, 0.59, 0.77, 0.75, 0.78, 0.50]
-
-    # Convert Sex to binary
-    sex = {'female': 1, 'male': 0}
-    raw_data['Sex'] = raw_data['Sex'].map(sex)
-
-    # Flip values of Passenger Class and scale exponentially
-    # Lower Passenger Class indicates higher economic class, 1=upper, 3=lower
-    # New scale 0=lower, 2.71=mid, 7.38=upper
-    raw_data['Pclass'] = np.exp([3 - value for value in raw_data['Pclass']])
-   
-    data = pd.get_dummies(raw_data[features])
-
-    # Create a dictionary of Cabin letter with percent liklihood of survival
-    cabin_dict = dict(zip(list(cabins), cabin_percent))
-
-    # Convert cabins to a percent liklihood of servival
-    data['Cabin'] = raw_data['Cabin'].apply(cabin_convert, args=(cabin_dict,))
 
     return data
 
-# data = data_clean(train)
-print(train.head(20))
+smokers = train[train['smoking'] == 1]
+non_smokers = train[train['smoking'] == 0]
 
-X = train
+print(smokers.describe().T)
+print(non_smokers.describe().T)
+
+data = train.drop(['smoking'], axis=1)
+
+X = data_clean(data)
 y = train['smoking']
 
+print(X.head())
 
 # Split the data into a training and testing set
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=1)
@@ -141,8 +85,8 @@ dt_pred = dtree.predict(X_test)
 
 # Create a Gradient Boosting Classifier
 grad = GradientBoostingClassifier(n_estimators=100,
-                                max_depth=4,
-                                random_state=42)
+                                    max_depth=4,
+                                    random_state=42)
 grad.fit(X_train, y_train)
 grad_pred = grad.predict(X_test)
 
@@ -164,21 +108,21 @@ y_pred = meta_model.predict(base_model_predictions)
 accuracy = accuracy_score(y_test, y_pred)
 print(f"Accuracy: {accuracy}")
 
-test_data = data_clean(test)
+# test_data = data_clean(test)
 
-lr_pred = lr.predict(test_data)
-kn_pred = kn.predict(test_data)
-dt_pred = dtree.predict(test_data)
-grad_pred = grad.predict(test_data)
-svc_pred = svc.predict(test_data)
+# lr_pred = lr.predict(test_data)
+# kn_pred = kn.predict(test_data)
+# dt_pred = dtree.predict(test_data)
+# grad_pred = grad.predict(test_data)
+# svc_pred = svc.predict(test_data)
 
-model_predictions = pd.DataFrame({'LR': lr_pred,
-                                   'KN': kn_pred,
-                                   'Dtree': dt_pred,
-                                   'grad': grad_pred,
-                                   'svc': svc_pred})
+# model_predictions = pd.DataFrame({'LR': lr_pred,
+#                                    'KN': kn_pred,
+#                                    'Dtree': dt_pred,
+#                                    'grad': grad_pred,
+#                                    'svc': svc_pred})
 
-prediction = meta_model.predict(model_predictions)
+# prediction = meta_model.predict(model_predictions)
 
-submission = pd.DataFrame({'PassengerId':test['PassengerId'], 'Transported':prediction})
-submission.to_csv('./submission.csv', index=False)
+# submission = pd.DataFrame({'id':test['id'], 'smoking':prediction})
+# submission.to_csv('./submission.csv', index=False)
